@@ -1,4 +1,3 @@
-<html>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,9 +37,10 @@
             border-radius: 8px; /* Rounded corners */
             margin-bottom: 20px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow */
+            position: relative; /* Needed for absolute positioning of buttons */
         }
 
-        /* --- Popup Styling --- */
+        /* --- Popup Styling (General) --- */
         .popup-container {
             position: fixed; /* Fixed position relative to viewport */
             top: 50%;
@@ -52,13 +52,23 @@
             border: 1px solid #ddd;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             padding: 25px;
-            z-index: 1001; /* Ensure it's above map controls */
+            z-index: 1001; /* Ensure it's above map controls but below instructions initially */
             border-radius: 12px; /* More rounded corners */
             display: none; /* Hidden by default */
             box-sizing: border-box;
         }
 
-        /* Popup close button styling */
+        /* Specific styling for Instructions Popup */
+        #instructions-popup {
+             display: block; /* Initially visible */
+             z-index: 1002; /* Above other popups initially */
+             border-left: 5px solid #3498db; /* Accent color */
+        }
+         #instructions-popup h2 {
+             color: #3498db; /* Match accent color */
+         }
+
+        /* Popup close button styling (shared) */
         .popup-close-btn {
             position: absolute;
             top: 10px;
@@ -82,7 +92,7 @@
         }
 
         /* Popup title */
-        #popup-title {
+        #popup-title, #instructions-popup h2 {
             margin-top: 0;
             margin-bottom: 15px;
             color: #2c3e50;
@@ -90,11 +100,22 @@
         }
 
         /* Popup text */
-        #popup-text {
+        #popup-text, #instructions-popup p {
             margin-bottom: 15px;
             line-height: 1.6;
             color: #555;
         }
+         #instructions-popup ul {
+            list-style: disc;
+            margin-left: 20px;
+            margin-bottom: 15px;
+            line-height: 1.6;
+            color: #555;
+         }
+         #instructions-popup li {
+             margin-bottom: 8px;
+         }
+
 
         /* Popup image styling */
         #popup-image {
@@ -161,11 +182,12 @@
         }
 
         /* Style for the source marker (example: pulsing animation) */
-        .source-marker-icon { /* Add this class via JS */
+        .source-marker-icon { /* Add this class via JS if using L.divIcon */
             /* You might need a custom L.divIcon for complex animations */
         }
         .source-pulse { /* Add this class via JS to the marker's element */
             animation: pulse 1.5s infinite;
+            border-radius: 50%; /* Make pulse circular if applied to default icon */
         }
 
         @keyframes pulse {
@@ -186,13 +208,24 @@
         .leaflet-tooltip-top:before {
             border-top-color: rgba(0, 0, 0, 0.7);
         }
+        /* Specific style for permanent source tooltip */
+        .source-tooltip {
+            background-color: #27ae60; /* Green background */
+            color: white;
+            font-weight: bold;
+            border: 1px solid #2ecc71;
+        }
+        .source-tooltip.leaflet-tooltip-top:before {
+             border-top-color: #27ae60;
+        }
+
 
         /* Button to go back */
         #back-button {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            z-index: 1000; /* Above map, below popup */
+            position: absolute; /* Position relative to map container */
+            top: 10px; /* Adjust position as needed */
+            left: 10px; /* Adjust position as needed */
+            z-index: 1000; /* Above map tiles, below popups */
             padding: 8px 15px;
             background-color: #3498db; /* Blue */
             color: white;
@@ -215,9 +248,23 @@
 <body>
     <h1>Find the Water Source</h1>
 
-    <div id="map"></div>
+    <div id="map">
+        <button id="back-button">Back to Regions</button>
+    </div>
 
-    <button id="back-button">Back to Regions</button>
+    <div id="instructions-popup" class="popup-container">
+        <button id="instructions-close-btn" class="popup-close-btn">X</button>
+        <h2>How to Play</h2>
+        <p>Follow these steps to find the water source:</p>
+        <ul>
+            <li>Click on a highlighted region marker (e.g., Nigeria, Kenya) to zoom in.</li>
+            <li>Click on a village marker within the region to learn about their water situation.</li>
+            <li>Explore the area by clicking on the landmark markers that appear.</li>
+            <li>Find the required number of landmarks to reveal the location of the new water source!</li>
+            <li>Click the final source marker (it pulses!) to see the successful outcome.</li>
+        </ul>
+        <p>Use the "Back to Regions" button (top-left on map) to return to the main view.</p>
+    </div>
 
     <div id="popup-template" class="popup-container">
         <button class="popup-close-btn" onclick="hidePopup()">X</button>
@@ -228,7 +275,7 @@
             <p>Landmarks found: <span id="landmarks-found-count">0</span> / <span id="landmarks-needed-count">0</span></p>
             <ul id="landmark-list">
                 </ul>
-            <p id="source-reveal-message" style="display: none; color: #27ae60; font-weight: bold; margin-top: 10px;">Source Revealed! Click the new marker on the map!</p>
+            <p id="source-reveal-message" style="display: none; color: #27ae60; font-weight: bold; margin-top: 10px;">Source Revealed! Click the pulsing marker on the map!</p>
         </div>
     </div>
 
@@ -240,8 +287,6 @@
         // --- Configuration & Data ---
 
         // Placeholder data structure. Replace with your actual data.
-        // Coordinates are [Latitude, Longitude]
-        // Images should be valid URLs or relative paths. Use placeholder service if needed.
         const mapData = {
             initialView: {
                 coords: [0, 20], // Centered roughly on Africa
@@ -261,7 +306,6 @@
                                 { id: 'koro_lm2', name: "Dry Riverbed", coords: [9.48, 8.52], info: "During the dry season, this riverbed is completely empty. Water only flows briefly after heavy rains.", image: "https://placehold.co/400x200/d8c3a5/ffffff?text=Dry+Riverbed" },
                                 { id: 'koro_lm3', name: "Village Market", coords: [9.51, 8.51], info: "The bustling market offers goods, but water must be carried here from far away.", image: "https://placehold.co/400x200/e85d75/ffffff?text=Village+Market" },
                                 { id: 'koro_lm4', name: "Old Well (Broken)", coords: [9.49, 8.49], info: "This well used to provide water, but it fell into disrepair years ago and is now unusable.", image: "https://placehold.co/400x200/8e8d8a/ffffff?text=Old+Well" }
-                                // Add more landmarks if needed, ensure landmarksNeeded matches the count required
                             ],
                             source: {
                                 coords: [9.53, 8.53], // Coordinates of the final water source
@@ -269,8 +313,6 @@
                                 image: "https://placehold.co/400x200/2ecc71/ffffff?text=Clean+Water+Source!" // Image of the source
                             }
                         },
-                        // Add more villages in Nigeria here...
-                        // 'Another Village': { coords: [...], info: "...", landmarksNeeded: ..., landmarks: [...], source: {...} }
                     }
                 },
                 'Kenya': {
@@ -291,7 +333,6 @@
                                 image: "https://placehold.co/400x200/58a4b0/ffffff?text=Protected+Spring"
                             }
                         }
-                         // Add more villages in Kenya here...
                     }
                 },
                  'Tanzania': {
@@ -299,23 +340,8 @@
                     zoom: 6,
                      villages: {
                          // Add village data for Tanzania following the same structure...
-                         // Example:
-                         // 'Sukuma Village': {
-                         //    coords: [-3.5, 33.5],
-                         //    info: "Information about water situation in Sukuma Village...",
-                         //    landmarksNeeded: 3,
-                         //    landmarks: [
-                         //        { id: 'sukuma_lm1', name: "...", coords: [...], info: "...", image: "..." },
-                         //        ...
-                         //    ],
-                         //    source: { coords: [...], info: "...", image: "..." }
-                         // }
                      }
                 }
-                // Add other regions if needed. To simulate 'greyed out', you could either:
-                // 1. Not include them here, so no marker appears.
-                // 2. Use a different marker style (requires custom icons or CSS).
-                // 3. For a true map overlay, use GeoJSON layers (more advanced).
             }
         };
 
@@ -343,6 +369,9 @@
         const neededCountSpan = document.getElementById('landmarks-needed-count');
         const checklistList = document.getElementById('landmark-list');
         const sourceRevealMsg = document.getElementById('source-reveal-message');
+        // New DOM elements for instructions popup
+        const instructionsPopup = document.getElementById('instructions-popup');
+        const instructionsCloseBtn = document.getElementById('instructions-close-btn');
 
 
         // --- Map Initialization ---
@@ -359,21 +388,40 @@
             // Setup back button listener
             backButton.addEventListener('click', handleBackButton);
 
-            // Display initial region markers
-            displayRegions();
-            console.log("Map initialized.");
+            // Setup instructions popup close button listener
+            instructionsCloseBtn.addEventListener('click', hideInstructionsPopup);
+
+            // Instructions popup is shown by default via CSS ('display: block')
+            // Map interaction (displayRegions) will be triggered when instructions are closed.
+            console.log("Map base initialized. Instructions popup is visible.");
         }
+
+        // --- Instructions Popup Functions ---
+        /**
+         * Hides the instructions popup and starts the main map interaction
+         * by displaying the initial regions.
+         */
+        function hideInstructionsPopup() {
+            if (instructionsPopup) {
+                instructionsPopup.style.display = 'none';
+                console.log("Instructions popup hidden.");
+                // Now that instructions are closed, display the map regions
+                displayRegions();
+            }
+        }
+
 
         // --- Display Functions ---
 
         /**
          * Clears existing markers and displays markers for each defined region.
          * Sets the view to the initial global view.
+         * This is now called AFTER the instructions popup is closed.
          */
         function displayRegions() {
             console.log("Displaying regions...");
             clearAllMarkers(); // Clear everything before showing regions
-            hidePopup();
+            hidePopup(); // Hide the main interaction popup if it was somehow open
             currentView = 'regions';
             currentRegion = null;
             currentVillage = null;
@@ -392,9 +440,7 @@
                     marker.on('click', () => selectRegion(regionName));
                     regionMarkers[regionName] = marker; // Store marker reference
                 } else {
-                    // Optional: Add greyed-out markers or log inactive regions
                      console.log(`Region ${regionName} skipped (no villages defined).`);
-                     // Example: L.marker(region.coords, { icon: greyIcon }).addTo(map);
                 }
             }
              // Reset map view to the initial overview
@@ -413,27 +459,20 @@
             currentView = 'villages';
             const region = mapData.regions[regionName];
 
-            // Zoom/pan the map to the selected region
             map.flyTo(region.coords, region.zoom);
-
-            // Clear previous village/landmark markers
             clearVillageMarkers();
             clearLandmarkAndSourceMarkers();
             hidePopup();
 
-            // Make non-selected region markers inactive
+            // Make non-selected region markers inactive using class toggle
             Object.entries(regionMarkers).forEach(([name, marker]) => {
                 const element = marker.getElement();
-                if (element) { // Check if element exists
-                    if (name !== regionName) {
-                        element.classList.add('inactive-marker');
-                    } else {
-                        element.classList.remove('inactive-marker');
-                    }
+                if (element) {
+                    // Add 'inactive-marker' class if name doesn't match regionName, remove otherwise
+                    element.classList.toggle('inactive-marker', name !== regionName);
                 }
             });
 
-            // Display villages for the selected region
             displayVillages(regionName);
             backButton.style.display = 'block'; // Show back button
             console.log(`Region ${regionName} selected.`);
@@ -459,7 +498,6 @@
                 const marker = L.marker(village.coords)
                     .addTo(map)
                     .bindTooltip(villageName);
-
                 // Add click event to select the village
                 marker.on('click', () => selectVillage(villageName));
                 villageMarkers[villageName] = marker; // Store marker reference
@@ -484,18 +522,11 @@
             requiredLandmarksCount = village.landmarksNeeded;
             foundLandmarks.clear();
 
-            // Maybe zoom in slightly more or center on village
-            // map.flyTo(village.coords, map.getZoom() + 1);
-
             // Make non-selected village markers inactive
             Object.entries(villageMarkers).forEach(([name, marker]) => {
                 const element = marker.getElement();
                  if (element) {
-                    if (name !== villageName) {
-                        element.classList.add('inactive-marker');
-                    } else {
-                        element.classList.remove('inactive-marker');
-                    }
+                    element.classList.toggle('inactive-marker', name !== villageName);
                  }
             });
 
@@ -506,7 +537,7 @@
                 null, // No image for initial village info popup
                 true // Show the checklist section
             );
-            updateChecklistUI(); // Initialize checklist display
+            // updateChecklistUI(); // Called within showPopup if showChecklist is true
 
             // Clear old landmarks and display new ones
             clearLandmarkAndSourceMarkers();
@@ -528,10 +559,8 @@
                 const marker = L.marker(landmark.coords)
                     .addTo(map)
                     .bindTooltip(landmark.name);
-
                  // Store landmark data with the marker for easy access later
                  marker.landmarkData = landmark;
-
                 // Add click event to explore the landmark
                 marker.on('click', () => exploreLandmark(marker));
                 landmarkMarkers.push(marker); // Add to array for tracking/clearing
@@ -552,16 +581,10 @@
                 console.error("Landmark data not found on marker:", marker);
                 return;
             }
-
             console.log(`Exploring landmark: ${landmark.name}`);
 
              // Show Part 2 Popup (Landmark Info)
-            showPopup(
-                landmark.name,
-                landmark.info,
-                landmark.image // Show landmark image if available
-                // No checklist needed here, but keep the main popup open
-            );
+            showPopup( landmark.name, landmark.info, landmark.image );
 
             // Check if this landmark has already been found
             if (!foundLandmarks.has(landmark.id)) {
@@ -569,11 +592,10 @@
                 console.log(`Found landmark ${landmark.id}. Total found: ${foundLandmarks.size}/${requiredLandmarksCount}`);
 
                 // Update UI: Mark landmark as found in checklist and visually on map
-                updateChecklistUI(); // Update the list in the popup
+                updateChecklistUI(); // Update the list in the main popup (if open)
                 const element = marker.getElement();
                 if (element) {
                     element.classList.add('found-landmark-marker'); // Add class for styling
-                    // Optionally change icon or opacity: marker.setIcon(foundIcon);
                 }
                 marker.closeTooltip(); // Optional: close tooltip once found
                 marker.unbindTooltip(); // Optional: prevent tooltip from reappearing
@@ -602,12 +624,12 @@
             }
             console.log("All landmarks found! Revealing source...");
 
-            // Optional: Make landmark markers less prominent now
+            // Optional: Make remaining landmark markers less prominent now
             landmarkMarkers.forEach(marker => {
                  const element = marker.getElement();
+                 // Check if element exists and if it hasn't already been marked as found
                  if (element && !element.classList.contains('found-landmark-marker')) {
-                     // Apply style only if not already marked as found visually
-                     element.style.opacity = '0.4';
+                     element.style.opacity = '0.4'; // Dim unfound landmarks
                  }
             });
 
@@ -623,11 +645,7 @@
             sourceMarker.on('click', () => {
                 console.log("Clicked on the source marker.");
                 // Show Part 3 Popup (Source Info)
-                showPopup(
-                    "The Water Source!",
-                    source.info,
-                    source.image // Show source image if available
-                );
+                showPopup( "The Water Source!", source.info, source.image );
             });
 
              // Add pulse animation class to the marker's element for visual cue
@@ -636,22 +654,24 @@
                  sourceElement.classList.add('source-pulse');
              }
 
-            // Update the checklist popup to indicate source is revealed
-            sourceRevealMsg.style.display = 'block'; // Show the reveal message
+            // Update the checklist popup (if open) to indicate source is revealed
+            if (popupElement.style.display === 'block' && popupChecklist.style.display === 'block') {
+                 sourceRevealMsg.style.display = 'block';
+            }
             console.log("Source marker revealed.");
         }
 
         // --- UI Helper Functions ---
 
         /**
-         * Displays the popup modal with specified content.
+         * Displays the MAIN interaction popup modal with specified content.
          * @param {string} title - The title for the popup.
          * @param {string} text - The main text content.
          * @param {string|null} imageUrl - URL of the image to display, or null.
          * @param {boolean} showChecklist - Whether to display the landmark checklist section.
          */
         function showPopup(title, text, imageUrl = null, showChecklist = false) {
-            console.log(`Showing popup: "${title}"`);
+            console.log(`Showing main popup: "${title}"`);
             popupTitle.textContent = title;
             popupText.textContent = text;
 
@@ -677,25 +697,29 @@
                 popupChecklist.style.display = 'none';
              }
 
-             // Hide source reveal message initially when popup opens
+             // Hide source reveal message initially when popup opens, updateChecklistUI will show it if needed
             sourceRevealMsg.style.display = 'none';
 
-            popupElement.style.display = 'block'; // Show the popup
+            popupElement.style.display = 'block'; // Show the main popup
         }
 
         /**
-         * Hides the popup modal.
+         * Hides the MAIN interaction popup modal.
          */
         function hidePopup() {
             popupElement.style.display = 'none';
-            console.log("Popup hidden.");
+            console.log("Main interaction popup hidden.");
         }
 
         /**
          * Updates the landmark checklist section in the popup based on current state.
+         * Only updates if the checklist section is currently visible.
          */
         function updateChecklistUI() {
-            if (!currentVillage || !currentRegion) return; // Need village context
+            // Ensure we have context and the checklist is actually supposed to be visible
+            if (!currentVillage || !currentRegion || !popupChecklist.style.display || popupChecklist.style.display === 'none') {
+                 return;
+            }
 
             const village = mapData.regions[currentRegion].villages[currentVillage];
             if (!village) return;
@@ -709,9 +733,8 @@
             village.landmarks.forEach(lm => {
                 const listItem = document.createElement('li');
                 listItem.textContent = lm.name;
-                if (foundLandmarks.has(lm.id)) {
-                    listItem.classList.add('found'); // Apply 'found' style
-                }
+                // Apply 'found' class if the landmark ID is in the foundLandmarks set
+                listItem.classList.toggle('found', foundLandmarks.has(lm.id));
                 checklistList.appendChild(listItem);
             });
 
@@ -738,7 +761,7 @@
                 sourceMarker.remove();
                 sourceMarker = null;
             }
-            // Don't clear foundLandmarks here, it's reset when selecting a village
+            // Note: foundLandmarks is reset when *selecting* a village, not here.
             console.log("Landmark and Source markers cleared.");
         }
 
@@ -758,13 +781,13 @@
         function handleBackButton() {
             console.log(`Back button clicked. Current view: ${currentView}`);
             if (currentView === 'landmarks') {
-                // Go from landmarks view back to villages view
+                // Go from landmarks view back to villages view for the current region
                 selectRegion(currentRegion); // Reselecting region effectively shows villages
             } else if (currentView === 'villages') {
-                // Go from villages view back to regions view
+                // Go from villages view back to the main region view
                 displayRegions(); // Display all regions again
             }
-             // No action if already at 'regions' view (button should be hidden)
+             // No action if already at 'regions' view (button should be hidden anyway)
         }
 
 
