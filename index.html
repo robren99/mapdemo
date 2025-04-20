@@ -1,0 +1,778 @@
+<html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Water Hunt Map</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+
+    <style>
+        /* Basic body styling */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4f4f9; /* Light background */
+            color: #333;
+        }
+
+        /* Heading styling */
+        h1 {
+            margin: 20px 0;
+            color: #2c3e50; /* Dark blue-grey */
+        }
+
+        /* Map container styling */
+        #map {
+            height: 65vh; /* Responsive height */
+            width: 90%;   /* Responsive width */
+            max-width: 1000px; /* Max width */
+            border: 1px solid #ccc;
+            border-radius: 8px; /* Rounded corners */
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1); /* Subtle shadow */
+        }
+
+        /* --- Popup Styling --- */
+        .popup-container {
+            position: fixed; /* Fixed position relative to viewport */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 450px;
+            background-color: white;
+            border: 1px solid #ddd;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            padding: 25px;
+            z-index: 1001; /* Ensure it's above map controls */
+            border-radius: 12px; /* More rounded corners */
+            display: none; /* Hidden by default */
+            box-sizing: border-box;
+        }
+
+        /* Popup close button styling */
+        .popup-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #f1f1f1;
+            border: 1px solid #ccc;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            line-height: 28px; /* Center the 'X' */
+            text-align: center;
+            color: #555;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .popup-close-btn:hover {
+            background-color: #e04f4f; /* Reddish on hover */
+            color: white;
+        }
+
+        /* Popup title */
+        #popup-title {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #2c3e50;
+            font-size: 1.4em;
+        }
+
+        /* Popup text */
+        #popup-text {
+            margin-bottom: 15px;
+            line-height: 1.6;
+            color: #555;
+        }
+
+        /* Popup image styling */
+        #popup-image {
+            max-width: 100%;
+            height: auto;
+            margin-bottom: 15px;
+            border-radius: 8px; /* Rounded corners for images */
+            display: block; /* Handle display toggle via JS */
+        }
+
+        /* Checklist styling */
+        #popup-checklist {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        #popup-checklist p {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        #popup-checklist ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #popup-checklist li {
+            margin-bottom: 8px;
+            opacity: 0.6; /* Default state: not found */
+            transition: opacity 0.3s;
+            padding-left: 25px; /* Space for icon */
+            position: relative;
+        }
+        #popup-checklist li::before { /* Base icon (e.g., circle) */
+            content: '○';
+            position: absolute;
+            left: 0;
+            top: 0;
+            font-size: 1.1em;
+            color: #aaa;
+        }
+        #popup-checklist li.found {
+            opacity: 1;
+            color: #27ae60; /* Green for found */
+        }
+         #popup-checklist li.found::before { /* Found icon (e.g., checkmark) */
+            content: '✔';
+            color: #27ae60; /* Green */
+        }
+
+        /* --- Leaflet Marker Styling --- */
+        /* Style for markers that are not the current focus */
+        .inactive-marker {
+            filter: grayscale(80%) opacity(50%); /* Make less prominent */
+            transition: filter 0.3s ease-in-out;
+        }
+        .leaflet-marker-icon:not(.inactive-marker) {
+             filter: grayscale(0%) opacity(100%);
+             transition: filter 0.3s ease-in-out;
+        }
+
+        /* Style for found landmarks */
+        .found-landmark-marker {
+             filter: grayscale(100%) opacity(60%); /* Visually distinct when found */
+        }
+
+        /* Style for the source marker (example: pulsing animation) */
+        .source-marker-icon { /* Add this class via JS */
+            /* You might need a custom L.divIcon for complex animations */
+        }
+        .source-pulse { /* Add this class via JS to the marker's element */
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); } /* Start shadow */
+            70% { box-shadow: 0 0 0 15px rgba(46, 204, 113, 0); } /* Expand shadow */
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); } /* End shadow */
+        }
+
+        /* Tooltip styling */
+        .leaflet-tooltip {
+            border-radius: 4px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            box-shadow: none;
+            padding: 5px 10px;
+        }
+        .leaflet-tooltip-top:before {
+            border-top-color: rgba(0, 0, 0, 0.7);
+        }
+
+        /* Button to go back */
+        #back-button {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 1000; /* Above map, below popup */
+            padding: 8px 15px;
+            background-color: #3498db; /* Blue */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: none; /* Hidden initially */
+        }
+        #back-button:hover {
+            background-color: #2980b9;
+        }
+
+        /* Use Inter font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+    </style>
+</head>
+<body>
+    <h1>Find the Water Source</h1>
+
+    <div id="map"></div>
+
+    <button id="back-button">Back to Regions</button>
+
+    <div id="popup-template" class="popup-container">
+        <button class="popup-close-btn" onclick="hidePopup()">X</button>
+        <h2 id="popup-title">Popup Title</h2>
+        <img id="popup-image" src="https://placehold.co/400x200/eee/ccc?text=Image" alt="Location image" style="display: none;">
+        <p id="popup-text">Popup description goes here.</p>
+        <div id="popup-checklist" style="display: none;">
+            <p>Landmarks found: <span id="landmarks-found-count">0</span> / <span id="landmarks-needed-count">0</span></p>
+            <ul id="landmark-list">
+                </ul>
+            <p id="source-reveal-message" style="display: none; color: #27ae60; font-weight: bold; margin-top: 10px;">Source Revealed! Click the new marker on the map!</p>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <script>
+        // --- Configuration & Data ---
+
+        // Placeholder data structure. Replace with your actual data.
+        // Coordinates are [Latitude, Longitude]
+        // Images should be valid URLs or relative paths. Use placeholder service if needed.
+        const mapData = {
+            initialView: {
+                coords: [0, 20], // Centered roughly on Africa
+                zoom: 4
+            },
+            regions: {
+                'Nigeria': {
+                    coords: [9.0820, 8.6753], // Lat/Lng for centering Nigeria
+                    zoom: 6, // Zoom level when Nigeria is selected
+                    villages: {
+                        'Koro Village': {
+                            coords: [9.5, 8.5], // Example coords for Koro Village
+                            info: "In Koro Village, women and girls often walk 6 kilometers each day to fetch water from a distant, unreliable stream. The water is often contaminated.",
+                            landmarksNeeded: 3, // Number of landmarks to find before source appears
+                            landmarks: [
+                                { id: 'koro_lm1', name: "Ancient Baobab Tree", coords: [9.52, 8.48], info: "This majestic tree is a meeting point, but offers only shade, no water.", image: "https://placehold.co/400x200/a2b9bc/ffffff?text=Baobab+Tree" },
+                                { id: 'koro_lm2', name: "Dry Riverbed", coords: [9.48, 8.52], info: "During the dry season, this riverbed is completely empty. Water only flows briefly after heavy rains.", image: "https://placehold.co/400x200/d8c3a5/ffffff?text=Dry+Riverbed" },
+                                { id: 'koro_lm3', name: "Village Market", coords: [9.51, 8.51], info: "The bustling market offers goods, but water must be carried here from far away.", image: "https://placehold.co/400x200/e85d75/ffffff?text=Village+Market" },
+                                { id: 'koro_lm4', name: "Old Well (Broken)", coords: [9.49, 8.49], info: "This well used to provide water, but it fell into disrepair years ago and is now unusable.", image: "https://placehold.co/400x200/8e8d8a/ffffff?text=Old+Well" }
+                                // Add more landmarks if needed, ensure landmarksNeeded matches the count required
+                            ],
+                            source: {
+                                coords: [9.53, 8.53], // Coordinates of the final water source
+                                info: "Success! Thanks to community effort and support, a new borehole well has been drilled, providing clean and accessible water right here in the village!",
+                                image: "https://placehold.co/400x200/2ecc71/ffffff?text=Clean+Water+Source!" // Image of the source
+                            }
+                        },
+                        // Add more villages in Nigeria here...
+                        // 'Another Village': { coords: [...], info: "...", landmarksNeeded: ..., landmarks: [...], source: {...} }
+                    }
+                },
+                'Kenya': {
+                    coords: [-1.2921, 36.8219], // Centering Kenya
+                    zoom: 6,
+                    villages: {
+                        'Maasai Village': {
+                            coords: [-1.8, 36.5], // Example coords for a village in Kenya
+                            info: "The journey for water here can be over 10km across terrain shared with wildlife. It's a daily struggle, especially in the dry season.",
+                            landmarksNeeded: 2,
+                            landmarks: [
+                                 { id: 'maasai_lm1', name: "Acacia Grove", coords: [-1.81, 36.51], info: "These trees are vital to the ecosystem but mark areas where encountering wildlife is common, adding danger to the water trek.", image: "https://placehold.co/400x200/f4a261/ffffff?text=Acacia+Grove" },
+                                 { id: 'maasai_lm2', name: "Rocky Outcrop", coords: [-1.79, 36.48], info: "A high vantage point used to spot grazing animals. No water can be found among these rocks.", image: "https://placehold.co/400x200/b0a084/ffffff?text=Rocky+Outcrop" }
+                            ],
+                            source: {
+                                coords: [-1.82, 36.49],
+                                info: "Found! A protected spring, enhanced with a catchment system, now offers a safe and reliable water source closer to the village.",
+                                image: "https://placehold.co/400x200/58a4b0/ffffff?text=Protected+Spring"
+                            }
+                        }
+                         // Add more villages in Kenya here...
+                    }
+                },
+                 'Tanzania': {
+                    coords: [-6.3690, 34.8888], // Centering Tanzania
+                    zoom: 6,
+                     villages: {
+                         // Add village data for Tanzania following the same structure...
+                         // Example:
+                         // 'Sukuma Village': {
+                         //    coords: [-3.5, 33.5],
+                         //    info: "Information about water situation in Sukuma Village...",
+                         //    landmarksNeeded: 3,
+                         //    landmarks: [
+                         //        { id: 'sukuma_lm1', name: "...", coords: [...], info: "...", image: "..." },
+                         //        ...
+                         //    ],
+                         //    source: { coords: [...], info: "...", image: "..." }
+                         // }
+                     }
+                }
+                // Add other regions if needed. To simulate 'greyed out', you could either:
+                // 1. Not include them here, so no marker appears.
+                // 2. Use a different marker style (requires custom icons or CSS).
+                // 3. For a true map overlay, use GeoJSON layers (more advanced).
+            }
+        };
+
+        // --- State Variables ---
+        let map; // Holds the Leaflet map instance
+        let currentView = 'regions'; // Tracks current view: 'regions', 'villages', 'landmarks'
+        let currentRegion = null; // Name of the selected region
+        let currentVillage = null; // Name of the selected village
+        let regionMarkers = {}; // Stores markers for regions { regionName: marker }
+        let villageMarkers = {}; // Stores markers for villages { villageName: marker }
+        let landmarkMarkers = []; // Array stores markers for landmarks [marker, marker, ...]
+        let sourceMarker = null; // Stores the source marker when revealed
+
+        let foundLandmarks = new Set(); // Stores IDs of landmarks found in the current hunt
+        let requiredLandmarksCount = 0; // Number of landmarks needed for the current village
+
+        // DOM Elements
+        const backButton = document.getElementById('back-button');
+        const popupElement = document.getElementById('popup-template');
+        const popupTitle = document.getElementById('popup-title');
+        const popupText = document.getElementById('popup-text');
+        const popupImage = document.getElementById('popup-image');
+        const popupChecklist = document.getElementById('popup-checklist');
+        const foundCountSpan = document.getElementById('landmarks-found-count');
+        const neededCountSpan = document.getElementById('landmarks-needed-count');
+        const checklistList = document.getElementById('landmark-list');
+        const sourceRevealMsg = document.getElementById('source-reveal-message');
+
+
+        // --- Map Initialization ---
+        function initMap() {
+            console.log("Initializing map...");
+            map = L.map('map').setView(mapData.initialView.coords, mapData.initialView.zoom);
+
+            // Add OpenStreetMap tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18, // Limit zoom to avoid overly detailed tiles
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // Setup back button listener
+            backButton.addEventListener('click', handleBackButton);
+
+            // Display initial region markers
+            displayRegions();
+            console.log("Map initialized.");
+        }
+
+        // --- Display Functions ---
+
+        /**
+         * Clears existing markers and displays markers for each defined region.
+         * Sets the view to the initial global view.
+         */
+        function displayRegions() {
+            console.log("Displaying regions...");
+            clearAllMarkers(); // Clear everything before showing regions
+            hidePopup();
+            currentView = 'regions';
+            currentRegion = null;
+            currentVillage = null;
+            backButton.style.display = 'none'; // Hide back button at top level
+
+            // Add markers for clickable regions
+            for (const regionName in mapData.regions) {
+                const region = mapData.regions[regionName];
+                // Only add marker if the region has defined villages
+                if (region.villages && Object.keys(region.villages).length > 0) {
+                     const marker = L.marker(region.coords)
+                        .addTo(map)
+                        .bindTooltip(regionName, { permanent: false, direction: 'top' });
+
+                    // Add click event listener to select the region
+                    marker.on('click', () => selectRegion(regionName));
+                    regionMarkers[regionName] = marker; // Store marker reference
+                } else {
+                    // Optional: Add greyed-out markers or log inactive regions
+                     console.log(`Region ${regionName} skipped (no villages defined).`);
+                     // Example: L.marker(region.coords, { icon: greyIcon }).addTo(map);
+                }
+            }
+             // Reset map view to the initial overview
+             map.flyTo(mapData.initialView.coords, mapData.initialView.zoom);
+             console.log("Region markers displayed.");
+        }
+
+        /**
+         * Handles clicking on a region marker. Zooms into the region,
+         * updates marker visibility, and displays village markers for that region.
+         * @param {string} regionName - The name of the selected region.
+         */
+        function selectRegion(regionName) {
+            console.log(`Selecting region: ${regionName}`);
+            currentRegion = regionName;
+            currentView = 'villages';
+            const region = mapData.regions[regionName];
+
+            // Zoom/pan the map to the selected region
+            map.flyTo(region.coords, region.zoom);
+
+            // Clear previous village/landmark markers
+            clearVillageMarkers();
+            clearLandmarkAndSourceMarkers();
+            hidePopup();
+
+            // Make non-selected region markers inactive
+            Object.entries(regionMarkers).forEach(([name, marker]) => {
+                const element = marker.getElement();
+                if (element) { // Check if element exists
+                    if (name !== regionName) {
+                        element.classList.add('inactive-marker');
+                    } else {
+                        element.classList.remove('inactive-marker');
+                    }
+                }
+            });
+
+            // Display villages for the selected region
+            displayVillages(regionName);
+            backButton.style.display = 'block'; // Show back button
+            console.log(`Region ${regionName} selected.`);
+        }
+
+        /**
+         * Displays village markers for the currently selected region.
+         * @param {string} regionName - The name of the region whose villages to display.
+         */
+        function displayVillages(regionName) {
+            console.log(`Displaying villages for ${regionName}...`);
+            const villages = mapData.regions[regionName]?.villages;
+            if (!villages) {
+                console.error(`No village data found for region: ${regionName}`);
+                return;
+            }
+
+            clearVillageMarkers(); // Clear any existing village markers
+
+            for (const villageName in villages) {
+                const village = villages[villageName];
+                // Create marker for the village
+                const marker = L.marker(village.coords)
+                    .addTo(map)
+                    .bindTooltip(villageName);
+
+                // Add click event to select the village
+                marker.on('click', () => selectVillage(villageName));
+                villageMarkers[villageName] = marker; // Store marker reference
+            }
+            console.log(`${Object.keys(villageMarkers).length} village markers displayed.`);
+        }
+
+        /**
+         * Handles clicking on a village marker. Shows Part 1 popup,
+         * displays landmark markers, and updates UI state.
+         * @param {string} villageName - The name of the selected village.
+         */
+        function selectVillage(villageName) {
+            if (!currentRegion) return; // Safety check
+            console.log(`Selecting village: ${villageName}`);
+
+            currentVillage = villageName;
+            currentView = 'landmarks';
+            const village = mapData.regions[currentRegion].villages[villageName];
+
+            // Reset landmark hunt state for this village
+            requiredLandmarksCount = village.landmarksNeeded;
+            foundLandmarks.clear();
+
+            // Maybe zoom in slightly more or center on village
+            // map.flyTo(village.coords, map.getZoom() + 1);
+
+            // Make non-selected village markers inactive
+            Object.entries(villageMarkers).forEach(([name, marker]) => {
+                const element = marker.getElement();
+                 if (element) {
+                    if (name !== villageName) {
+                        element.classList.add('inactive-marker');
+                    } else {
+                        element.classList.remove('inactive-marker');
+                    }
+                 }
+            });
+
+            // Show Part 1 Popup (Village Info + Goal)
+            showPopup(
+                `Welcome to ${villageName}`,
+                village.info + ` You need to find ${village.landmarksNeeded} key locations to understand the water situation and find the source.`,
+                null, // No image for initial village info popup
+                true // Show the checklist section
+            );
+            updateChecklistUI(); // Initialize checklist display
+
+            // Clear old landmarks and display new ones
+            clearLandmarkAndSourceMarkers();
+            displayLandmarks(village);
+            backButton.style.display = 'block'; // Ensure back button is visible
+            console.log(`Village ${villageName} selected. Starting landmark hunt.`);
+        }
+
+        /**
+         * Displays landmark markers for the currently selected village.
+         * @param {object} village - The data object for the selected village.
+         */
+        function displayLandmarks(village) {
+            console.log(`Displaying ${village.landmarks.length} landmarks for ${currentVillage}...`);
+            clearLandmarkAndSourceMarkers(); // Clear previous landmarks first
+
+            village.landmarks.forEach(landmark => {
+                // Create marker for the landmark
+                const marker = L.marker(landmark.coords)
+                    .addTo(map)
+                    .bindTooltip(landmark.name);
+
+                 // Store landmark data with the marker for easy access later
+                 marker.landmarkData = landmark;
+
+                // Add click event to explore the landmark
+                marker.on('click', () => exploreLandmark(marker));
+                landmarkMarkers.push(marker); // Add to array for tracking/clearing
+            });
+             console.log(`${landmarkMarkers.length} landmark markers displayed.`);
+        }
+
+        /**
+         * Handles clicking on a landmark marker. Shows Part 2 popup,
+         * updates the found state, and checks if the source should be revealed.
+         * @param {L.Marker} marker - The Leaflet marker object that was clicked.
+         */
+        function exploreLandmark(marker) {
+            if (!currentVillage) return; // Safety check
+
+            const landmark = marker.landmarkData; // Retrieve data stored on the marker
+            if (!landmark) {
+                console.error("Landmark data not found on marker:", marker);
+                return;
+            }
+
+            console.log(`Exploring landmark: ${landmark.name}`);
+
+             // Show Part 2 Popup (Landmark Info)
+            showPopup(
+                landmark.name,
+                landmark.info,
+                landmark.image // Show landmark image if available
+                // No checklist needed here, but keep the main popup open
+            );
+
+            // Check if this landmark has already been found
+            if (!foundLandmarks.has(landmark.id)) {
+                foundLandmarks.add(landmark.id);
+                console.log(`Found landmark ${landmark.id}. Total found: ${foundLandmarks.size}/${requiredLandmarksCount}`);
+
+                // Update UI: Mark landmark as found in checklist and visually on map
+                updateChecklistUI(); // Update the list in the popup
+                const element = marker.getElement();
+                if (element) {
+                    element.classList.add('found-landmark-marker'); // Add class for styling
+                    // Optionally change icon or opacity: marker.setIcon(foundIcon);
+                }
+                marker.closeTooltip(); // Optional: close tooltip once found
+                marker.unbindTooltip(); // Optional: prevent tooltip from reappearing
+
+                // Check if all required landmarks are found
+                if (foundLandmarks.size >= requiredLandmarksCount) {
+                    revealSource();
+                }
+            } else {
+                console.log(`Landmark ${landmark.id} already found.`);
+            }
+        }
+
+        /**
+         * Reveals the source marker once all required landmarks are found.
+         * Adds a special marker and updates the popup message.
+         */
+        function revealSource() {
+            if (!currentVillage || !currentRegion) return; // Safety check
+
+            const village = mapData.regions[currentRegion].villages[currentVillage];
+            const source = village.source;
+            if (!source) {
+                console.error(`Source data missing for village: ${currentVillage}`);
+                return;
+            }
+            console.log("All landmarks found! Revealing source...");
+
+            // Optional: Make landmark markers less prominent now
+            landmarkMarkers.forEach(marker => {
+                 const element = marker.getElement();
+                 if (element && !element.classList.contains('found-landmark-marker')) {
+                     // Apply style only if not already marked as found visually
+                     element.style.opacity = '0.4';
+                 }
+            });
+
+            // Display the source marker
+            sourceMarker = L.marker(source.coords, {
+                zIndexOffset: 1000 // Ensure it's visually on top
+                // Optional: Use a distinct icon for the source: icon: sourceIcon
+            })
+            .addTo(map)
+            .bindTooltip("Water Source Found!", { permanent: true, direction: 'top', className: 'source-tooltip' }); // Make tooltip always visible
+
+            // Add click event for the final popup
+            sourceMarker.on('click', () => {
+                console.log("Clicked on the source marker.");
+                // Show Part 3 Popup (Source Info)
+                showPopup(
+                    "The Water Source!",
+                    source.info,
+                    source.image // Show source image if available
+                );
+            });
+
+             // Add pulse animation class to the marker's element for visual cue
+             const sourceElement = sourceMarker.getElement();
+             if (sourceElement) {
+                 sourceElement.classList.add('source-pulse');
+             }
+
+            // Update the checklist popup to indicate source is revealed
+            sourceRevealMsg.style.display = 'block'; // Show the reveal message
+            console.log("Source marker revealed.");
+        }
+
+        // --- UI Helper Functions ---
+
+        /**
+         * Displays the popup modal with specified content.
+         * @param {string} title - The title for the popup.
+         * @param {string} text - The main text content.
+         * @param {string|null} imageUrl - URL of the image to display, or null.
+         * @param {boolean} showChecklist - Whether to display the landmark checklist section.
+         */
+        function showPopup(title, text, imageUrl = null, showChecklist = false) {
+            console.log(`Showing popup: "${title}"`);
+            popupTitle.textContent = title;
+            popupText.textContent = text;
+
+            // Handle image display
+            if (imageUrl) {
+                popupImage.src = imageUrl;
+                popupImage.style.display = 'block';
+                // Add error handling for broken images
+                popupImage.onerror = () => {
+                    popupImage.src = 'https://placehold.co/400x200/f0f0f0/ccc?text=Image+Not+Found'; // Fallback placeholder
+                    console.warn(`Image failed to load: ${imageUrl}`);
+                 };
+            } else {
+                popupImage.style.display = 'none';
+                popupImage.onerror = null; // Remove previous error handler
+            }
+
+             // Handle checklist display
+             if (showChecklist && currentVillage) {
+                 popupChecklist.style.display = 'block';
+                 updateChecklistUI(); // Ensure checklist is up-to-date
+             } else {
+                popupChecklist.style.display = 'none';
+             }
+
+             // Hide source reveal message initially when popup opens
+            sourceRevealMsg.style.display = 'none';
+
+            popupElement.style.display = 'block'; // Show the popup
+        }
+
+        /**
+         * Hides the popup modal.
+         */
+        function hidePopup() {
+            popupElement.style.display = 'none';
+            console.log("Popup hidden.");
+        }
+
+        /**
+         * Updates the landmark checklist section in the popup based on current state.
+         */
+        function updateChecklistUI() {
+            if (!currentVillage || !currentRegion) return; // Need village context
+
+            const village = mapData.regions[currentRegion].villages[currentVillage];
+            if (!village) return;
+
+            // Update counts
+            foundCountSpan.textContent = foundLandmarks.size;
+            neededCountSpan.textContent = requiredLandmarksCount;
+
+            // Rebuild the list of landmarks
+            checklistList.innerHTML = ''; // Clear previous list items
+            village.landmarks.forEach(lm => {
+                const listItem = document.createElement('li');
+                listItem.textContent = lm.name;
+                if (foundLandmarks.has(lm.id)) {
+                    listItem.classList.add('found'); // Apply 'found' style
+                }
+                checklistList.appendChild(listItem);
+            });
+
+            // Show source reveal message only if source is actually revealed (marker exists)
+            sourceRevealMsg.style.display = sourceMarker ? 'block' : 'none';
+
+            console.log("Checklist UI updated.");
+        }
+
+        // --- Marker Clearing Functions ---
+
+        /** Removes all village markers from the map and clears the tracking object. */
+        function clearVillageMarkers() {
+            Object.values(villageMarkers).forEach(marker => marker.remove());
+            villageMarkers = {};
+            console.log("Village markers cleared.");
+        }
+
+        /** Removes all landmark and source markers from the map and resets tracking variables. */
+        function clearLandmarkAndSourceMarkers() {
+            landmarkMarkers.forEach(marker => marker.remove());
+            landmarkMarkers = [];
+            if (sourceMarker) {
+                sourceMarker.remove();
+                sourceMarker = null;
+            }
+            // Don't clear foundLandmarks here, it's reset when selecting a village
+            console.log("Landmark and Source markers cleared.");
+        }
+
+        /** Removes all types of markers (region, village, landmark, source). */
+        function clearAllMarkers() {
+             Object.values(regionMarkers).forEach(marker => marker.remove());
+             regionMarkers = {};
+             clearVillageMarkers();
+             clearLandmarkAndSourceMarkers();
+             console.log("All markers cleared.");
+        }
+
+
+        // --- Navigation ---
+
+        /** Handles clicks on the 'Back' button, navigating up the hierarchy. */
+        function handleBackButton() {
+            console.log(`Back button clicked. Current view: ${currentView}`);
+            if (currentView === 'landmarks') {
+                // Go from landmarks view back to villages view
+                selectRegion(currentRegion); // Reselecting region effectively shows villages
+            } else if (currentView === 'villages') {
+                // Go from villages view back to regions view
+                displayRegions(); // Display all regions again
+            }
+             // No action if already at 'regions' view (button should be hidden)
+        }
+
+
+        // --- Start the Application ---
+        // Initialize the map once the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', initMap);
+
+    </script>
+
+</body>
+</html>
